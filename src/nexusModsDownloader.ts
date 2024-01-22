@@ -128,7 +128,12 @@ async function startDownload(
     if (!nexusInfo || !OAuthCredentials) return util.opn(modPageURL).catch(() => null);
 
     if (api.ext?.ensureLoggedIn !== undefined) {
-      await api.ext.ensureLoggedIn();
+      try {
+        await api.ext.ensureLoggedIn();
+      } catch (err) {
+        log('warn', 'not logged in', err);
+        throw new util.ProcessCanceled('Not logged in');
+      }
     }
 
     // Use the Nexus Mods API to get the file ID. 
