@@ -1,4 +1,5 @@
-import Nexus from 'nexus-api';
+/* eslint-disable */
+import { IFileInfo } from '@nexusmods/nexus-api';
 import { actions, log, selectors, types, util } from 'vortex-api';
 import { IGameSupport } from './types';
 import { getGameStore, ignoreNotifications } from './util';
@@ -118,23 +119,30 @@ async function startDownload(
     const nexusModsModId = gameSupport.nexusMods?.modId;
     const state = api.getState();
     const nexusInfo: any = util.getSafe(state, ['persistent', 'nexus', 'userInfo'], undefined);
-    const APIKEY: string = util.getSafe(state, ['confidential', 'account', 'nexus', 'APIKey'], undefined);
+    const OAuthCredentials = (state?.confidential?.account as any)?.nexus?.OAuthCredentials;
 
     // Free users or logged out users should be directed to the website.
     const modPageURL = `https://www.nexusmods.com/${gameSupport.nexusMods?.gameId}/mods/${gameSupport.nexusMods?.modId}?tab=files`;
     
     // If the user is logged out, all we can do is open the web page.
-    if (!nexusInfo || !APIKEY) return util.opn(modPageURL).catch(() => null);
-    
+    if (!nexusInfo || !OAuthCredentials) return util.opn(modPageURL).catch(() => null);
+
+    if (api.ext?.ensureLoggedIn !== undefined) {
+      try {
+        await api.ext.ensureLoggedIn();
+      } catch (err) {
+        log('warn', 'not logged in', err);
+        throw new util.ProcessCanceled('Not logged in');
+      }
+    }
+
     // Use the Nexus Mods API to get the file ID. 
-    const nexus = new Nexus('Vortex', util.getApplication().version, gameId, 30000);
-    await nexus.setKey(APIKEY);
     let fileId: number = -1;
     try {
-        const allModFiles = await nexus.getModFiles(nexusModsModId, nexusModsGameId).catch(() => ({ files: [], file_updates: [] }));
-        if (!allModFiles.files.length) throw new util.DataInvalid('Unable to get a list of files from the API');
+        const allModFiles: IFileInfo[] = await api.ext.nexusGetModFiles(nexusModsGameId, nexusModsModId);
+        if (!allModFiles.length) throw new util.DataInvalid('Unable to get a list of files from the API');
         // Look for either files that include the game version in the description or the primary file.
-        let modFiles = allModFiles.files
+        let modFiles = allModFiles
             .filter(f => (!!gameVersion && !!f.description && f.description.includes(gameVersion)) || (!f.description && f.is_primary));
         // We found more than one relevant file!
         if (modFiles.length > 1) {
@@ -143,7 +151,7 @@ async function startDownload(
         let modFile = modFiles[0];
         if (!modFile) {
             // Exit here are just open the mod page.
-            const fileChoices = allModFiles.files.filter(m => !!m.category_name).sort((a,b) => b.uploaded_timestamp - a.uploaded_timestamp).slice(0, 5);
+            const fileChoices = allModFiles.filter(m => !!m.category_name).sort((a,b) => b.uploaded_timestamp - a.uploaded_timestamp).slice(0, 5);
             const gameStore = getGameStore(gameId, api);
             // For some weird reason, New Vegas has a tab character in the middle of it's name, so that needs to be removed. 
             const title = (selectors.gameById(api.getState(), gameId)?.name || 'game').replace('\t', ' ');

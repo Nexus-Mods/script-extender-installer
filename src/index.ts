@@ -1,13 +1,15 @@
+/* eslint-disable */
 import * as path from 'path';
 import { actions, log, selectors, types, util } from 'vortex-api';
 import { getGameStore, getScriptExtenderVersion, getGamePath, toBlue, clearNotifications, ignoreNotifications } from './util';
 import * as gitHubDownloader from './githubDownloader';
-import * as nexusModsDownloader from './nexusModsDownloader';
 import * as silverlockDownloader from './silverlockDownloader';
 import supportData from './gameSupport';
 import { testSupported, installScriptExtender } from './installer';
 import { IGameSupport } from './types';
 
+import * as nexusModsDownloader from './nexusModsDownloader';
+const nxmDownloader: typeof nexusModsDownloader = util.lazyRequire(() => require('./nexusModsDownloader'));
 
 async function onCheckModVersion(api: types.IExtensionApi, gameId: string, mods: { [id: string]: types.IMod }) {
   // Clear any update notifications.
@@ -120,7 +122,7 @@ async function onGameModeActivated(api: types.IExtensionApi, gameId: string) {
 
   // If the script extender isn't installed, return. Perhaps we should recommend installing it?
   if (!scriptExtenderVersion) {
-    if (!!gameSupport?.nexusMods) return nexusModsDownloader.downloadScriptExtender(api, gameSupport);
+    if (!!gameSupport?.nexusMods) return nxmDownloader.downloadScriptExtender(api, gameSupport);
     else if (!!gameSupport?.gitHubAPIUrl) return gitHubDownloader.downloadScriptExtender(api, gameSupport);
     else return silverlockDownloader.notifyNotInstalled(gameSupport, api);
   }
