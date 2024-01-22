@@ -119,7 +119,7 @@ async function startDownload(
     const nexusModsModId = gameSupport.nexusMods?.modId;
     const state = api.getState();
     const nexusInfo: any = util.getSafe(state, ['persistent', 'nexus', 'userInfo'], undefined);
-    const OAuthCredentials = (state.confidential.account as any)?.nexus?.OAuthCredentials;
+    const OAuthCredentials = (state?.confidential?.account as any)?.nexus?.OAuthCredentials;
 
     // Free users or logged out users should be directed to the website.
     const modPageURL = `https://www.nexusmods.com/${gameSupport.nexusMods?.gameId}/mods/${gameSupport.nexusMods?.modId}?tab=files`;
