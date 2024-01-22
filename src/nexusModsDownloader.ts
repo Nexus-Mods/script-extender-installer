@@ -1,5 +1,5 @@
 /* eslint-disable */
-import Nexus from 'nexus-api';
+import { IFileInfo } from '@nexusmods/nexus-api';
 import { actions, log, selectors, types, util } from 'vortex-api';
 import { IGameSupport } from './types';
 import { getGameStore, ignoreNotifications } from './util';
@@ -127,19 +127,17 @@ async function startDownload(
     // If the user is logged out, all we can do is open the web page.
     if (!nexusInfo || !OAuthCredentials) return util.opn(modPageURL).catch(() => null);
 
-    const OAuth = {
-        fingerprint: OAuthCredentials.fingerprint,
-        refreshToken: OAuthCredentials.refreshToken,
-        token: OAuthCredentials.token,
+    if (api.ext?.ensureLoggedIn !== undefined) {
+      await api.ext.ensureLoggedIn();
     }
-    const nexus = await Nexus.createWithOAuth(OAuth, { id: 'vortex_loopback', secret: undefined }, 'Vortex', util.getApplication().version, gameId, 30000);
+
     // Use the Nexus Mods API to get the file ID. 
     let fileId: number = -1;
     try {
-        const allModFiles = await nexus.getModFiles(nexusModsModId, nexusModsGameId).catch(() => ({ files: [], file_updates: [] }));
-        if (!allModFiles.files.length) throw new util.DataInvalid('Unable to get a list of files from the API');
+        const allModFiles: IFileInfo[] = await api.ext.nexusGetModFiles(nexusModsGameId, nexusModsModId);
+        if (!allModFiles.length) throw new util.DataInvalid('Unable to get a list of files from the API');
         // Look for either files that include the game version in the description or the primary file.
-        let modFiles = allModFiles.files
+        let modFiles = allModFiles
             .filter(f => (!!gameVersion && !!f.description && f.description.includes(gameVersion)) || (!f.description && f.is_primary));
         // We found more than one relevant file!
         if (modFiles.length > 1) {
@@ -148,7 +146,7 @@ async function startDownload(
         let modFile = modFiles[0];
         if (!modFile) {
             // Exit here are just open the mod page.
-            const fileChoices = allModFiles.files.filter(m => !!m.category_name).sort((a,b) => b.uploaded_timestamp - a.uploaded_timestamp).slice(0, 5);
+            const fileChoices = allModFiles.filter(m => !!m.category_name).sort((a,b) => b.uploaded_timestamp - a.uploaded_timestamp).slice(0, 5);
             const gameStore = getGameStore(gameId, api);
             // For some weird reason, New Vegas has a tab character in the middle of it's name, so that needs to be removed. 
             const title = (selectors.gameById(api.getState(), gameId)?.name || 'game').replace('\t', ' ');
