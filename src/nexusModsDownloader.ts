@@ -1,3 +1,4 @@
+/* eslint-disable */
 import Nexus from 'nexus-api';
 import { actions, log, selectors, types, util } from 'vortex-api';
 import { IGameSupport } from './types';
@@ -118,17 +119,21 @@ async function startDownload(
     const nexusModsModId = gameSupport.nexusMods?.modId;
     const state = api.getState();
     const nexusInfo: any = util.getSafe(state, ['persistent', 'nexus', 'userInfo'], undefined);
-    const APIKEY: string = util.getSafe(state, ['confidential', 'account', 'nexus', 'APIKey'], undefined);
+    const OAuthCredentials = (state.confidential.account as any)?.nexus?.OAuthCredentials;
 
     // Free users or logged out users should be directed to the website.
     const modPageURL = `https://www.nexusmods.com/${gameSupport.nexusMods?.gameId}/mods/${gameSupport.nexusMods?.modId}?tab=files`;
     
     // If the user is logged out, all we can do is open the web page.
-    if (!nexusInfo || !APIKEY) return util.opn(modPageURL).catch(() => null);
-    
+    if (!nexusInfo || !OAuthCredentials) return util.opn(modPageURL).catch(() => null);
+
+    const OAuth = {
+        fingerprint: OAuthCredentials.fingerprint,
+        refreshToken: OAuthCredentials.refreshToken,
+        token: OAuthCredentials.token,
+    }
+    const nexus = await Nexus.createWithOAuth(OAuth, { id: 'vortex_loopback', secret: undefined }, 'Vortex', util.getApplication().version, gameId, 30000);
     // Use the Nexus Mods API to get the file ID. 
-    const nexus = new Nexus('Vortex', util.getApplication().version, gameId, 30000);
-    await nexus.setKey(APIKEY);
     let fileId: number = -1;
     try {
         const allModFiles = await nexus.getModFiles(nexusModsModId, nexusModsGameId).catch(() => ({ files: [], file_updates: [] }));
