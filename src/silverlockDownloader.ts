@@ -10,7 +10,13 @@ export function checkForUpdate(api: types.IExtensionApi,
     gameSupport: IGameSupport,
     scriptExtenderVersion: string): Promise<string> {
     return new Promise((resolve, reject) => {
-    const parsed = url.parse(gameSupport.website);
+    let parsed;
+    try {
+      parsed = new URL(gameSupport.website);
+    } catch (err) {
+      log('error', 'Invalid website URL', { url: gameSupport.website, error: err.message });
+      return resolve(scriptExtenderVersion);
+    }
     //const lib = parsed.protocol === 'https:' ? https : http;
     const lib = http;
     lib.get(parsed, (res: IncomingMessage) => {

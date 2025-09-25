@@ -43,9 +43,11 @@ function query(baseUrl: string, request: string): Promise<any> {
 }
 
 function getRequestOptions(link) {
-  const relUrl = url.parse(link);
+  const relUrl = new URL(link);
   return ({
-    ..._.pick(relUrl, ['port', 'hostname', 'path']),
+    port: relUrl.port,
+    hostname: relUrl.hostname,
+    path: relUrl.pathname + relUrl.search,
     headers: {
       'User-Agent': 'Vortex',
     },
