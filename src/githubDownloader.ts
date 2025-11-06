@@ -54,56 +54,6 @@ function getRequestOptions(link) {
   });
 }
 
-async function downloadConsent(api: types.IExtensionApi,
-                               gameSupport: IGameSupport, gameId: string) {
-  return new Promise<void>((resolve, reject) => {
-    api.sendNotification({
-      id: `scriptextender-missing-${gameId}`,
-      type: 'info',
-      noDismiss: true,
-      allowSuppress: true,
-      title: '{{name}} not installed',
-      message: gameSupport.name,
-      replace: { name: gameSupport.name },
-      actions: [
-        {
-          title: 'More',
-          action: (dismiss) => {
-            api.showDialog('info', '{{name}} not found', {
-              text: 'Vortex could not detect {{name}}. This means it is either not installed or installed incorrectly.'
-              + '\n\nFor the best modding experience, we recommend downloading and installing the script extender.'
-              + '\n\nIf you ignore this notice, Vortex will not remind you again until it is restarted.',
-              parameters: { name: gameSupport.name },
-            }, [
-              {
-                label: 'Ignore',
-                action: () => {
-                  ignoreNotifications(gameSupport);
-                  return reject(new util.UserCanceled());
-                },
-              },
-              {
-                label: 'Download',
-                action: () => {
-                  resolve();
-                  dismiss();
-                },
-              },
-            ]);
-          },
-        },
-        {
-          icon: 'close',
-          action: (dismiss) => {
-            dismiss();
-            return reject(new util.UserCanceled());
-          },
-        } as any,
-      ],
-    });
-  });
-}
-
 async function notifyUpdate(api: types.IExtensionApi, gameSupport: IGameSupport,
                             latest: string, current: string) {
   const gameId = selectors.activeGameId(api.store.getState());
@@ -283,8 +233,7 @@ export async function downloadScriptExtender(api: types.IExtensionApi,
   return getLatestReleases(gameSupport, undefined)
     .then(async currentReleases => {
       const downloadLink = await resolveDownloadLink(currentReleases, gameSupport);
-      return downloadConsent(api, gameSupport, gameId)
-        .then(() => startDownload(api, gameSupport, downloadLink));
+      return startDownload(api, gameSupport, downloadLink);
     })
     .catch(err => {
       if (err instanceof util.UserCanceled || err instanceof util.ProcessCanceled) {
