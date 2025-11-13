@@ -1,6 +1,6 @@
 /* eslint-disable */
 import * as path from 'path';
-import { actions, log, selectors, types, util } from 'vortex-api';
+import { fs, actions, log, selectors, types, util } from 'vortex-api';
 import { storeName } from './common';
 import { getGameStore, getScriptExtenderVersion, getGamePath, toBlue, clearNotifications, ignoreNotifications } from './util';
 import * as gitHubDownloader from './githubDownloader';
@@ -103,6 +103,13 @@ async function isMissingScriptExtender(api: types.IExtensionApi, gameId: string)
   // Check for disabled (but installed) script extenders.
   const mods = util.getSafe(api.store.getState(), ['persistent', 'mods', gameId], undefined);
   const modArray: types.IMod[] = mods ? Object.values(mods) : [];
+  const isManuallyInstalled = await fs.statAsync(path.join(gamePath, gameSupport.scriptExtExe))
+    .then(() => true)
+    .catch(() => false);
+  if (isManuallyInstalled) {
+    log('info', 'Script extender detected as manually installed', { game: gameId } );
+    return false;
+  }
   const installedScriptExtenders =
     modArray.filter(mod => !!mod?.attributes?.scriptExtender).length;
   if (installedScriptExtenders) {
@@ -269,6 +276,15 @@ function main(context: types.IExtensionContext) {
   context.once(() => {
     context.api.events.on('check-mods-version',
       (gameId: string, mods: {[id: string]: types.IMod}) => onCheckModVersion(context.api, gameId, mods));
+
+    context.api.onAsync('download-script-extender',
+      (gameId: string) => {
+        const gameSupport = supportData[gameId];
+        if (gameSupport == null) {
+          return Promise.resolve();
+        }
+        return downloadScriptExtender(context.api, gameSupport, gameId);
+      });
   });
 
   return true;
