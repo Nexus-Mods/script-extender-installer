@@ -1,62 +1,9 @@
 /* eslint-disable */
 import { IFileInfo } from '@nexusmods/nexus-api';
 import { actions, log, selectors, types, util } from 'vortex-api';
+import { storeName } from './common';
 import { IGameSupport } from './types';
 import { getGameStore, ignoreNotifications } from './util';
-
-
-const storeName = (id: string) => {
-    switch(id) {
-        case 'gog': return 'GOG';
-        case 'epic': return 'Epic Games';
-        case 'xbox': return 'Xbox Game Pass';
-        case 'steam': return 'Steam';
-        default: return 'Unknown Game Store';
-    }
-}
-
-async function promptInstall(api: types.IExtensionApi, gameSupport: IGameSupport, gameId: string, version: string, store: string) {
-    
-    return new Promise<void>(((resolve, reject) => {
-        api.sendNotification?.({
-            id: `scriptextender-missing-${gameId}`,
-            type: 'info',
-            noDismiss: false,
-            allowSuppress: true,
-            title: 'Script Extender not installed',
-            message: gameSupport.name,
-            replace: { name: gameSupport.name },
-            actions: [
-                {
-                    title: 'More',
-                    action: (dismiss) =>  api.showDialog?.('info', '{{name}} not found', {
-                        text: 'Vortex could not detect {{name}}. This means it is either not installed or installed incorrectly.'
-                        + '\n\nFor the best modding experience, we recommend downloading and installing the script extender.'
-                        + '\n\nYou are running version {{version}} ({{store}}) of the game, please make sure you use the correct script extender version.'
-                        + '\n\nIf you ignore this notice, Vortex will not remind you again until it is restarted.',
-                        parameters: { name: gameSupport.name, version: version || '?.?.?', store: storeName(store) },
-                      },
-                      [{
-                        label: 'Ignore',
-                        action: () => {
-                          ignoreNotifications(gameSupport);
-                          dismiss()
-                          return reject(new util.UserCanceled());
-                        },
-                      },
-                      {
-                        label: 'Download',
-                        action: () => {
-                          resolve();
-                          dismiss();
-                        },
-                      },]
-                    )
-                }
-            ]
-        })
-    }));
-}
 
 export async function downloadScriptExtender(api: types.IExtensionApi, gameSupport:IGameSupport) {
     const state: types.IState = api.getState();
@@ -75,24 +22,13 @@ export async function downloadScriptExtender(api: types.IExtensionApi, gameSuppo
     const gameStore = getGameStore(gameId, api);
 
     try {
-        // Ask the user if they want to install it.
-        await promptInstall(api, gameSupport, gameId, versionBasic, gameStore);
         // If yes, start installing.
         const modId = await startDownload(api, gameSupport, gameId, versionBasic);
         // Force-deploy the xSE files
         if (modId) await api.emitAndAwait('deploy-single-mod', gameId, modId, true);
         // Refresh the tools dashlet
-        await api.emitAndAwait('discover-tools', gameId);
-        // Configure the primary tool. 
-        api.store?.dispatch(
-            { type: 'SET_PRIMARY_TOOL', 
-              payload: { 
-                gameId: gameId, 
-                toolId: gameSupport.toolId
-              } 
-            }
-        );
-    
+        await util.toPromise(cb => api.events.emit('start-quick-discovery', () => cb(null)));
+        api.store.dispatch(actions.setPrimaryTool(gameId, gameSupport.toolId));
     }
     catch(err) {
         if (err instanceof util.UserCanceled || err instanceof util.ProcessCanceled) {
@@ -191,30 +127,20 @@ async function startDownload(
         return util.opn(modPageURL).catch(() => null);
     }
 
-    
-    // Direct non-Premium users to the download page. 
-    if (!nexusInfo?.isPremium) {
-        const modFileURL = `${modPageURL}${fileId !== -1 ? `&file_id=${fileId}`: ''}`
-        return util.opn(modFileURL).catch(() => null);
+    const modInfo = {
+      game: gameId,
+      name: gameSupport.name,
+      fileId: fileId,
+      modId: nexusModsModId,
     }
-    // We can start the download automatically for Premium users.
-    else {
-        const nxm = `nxm://${nexusModsGameId}/mods/${nexusModsModId}/files/${fileId}`;
-        return new Promise<string>((resolve, reject) => {
-            api.events.emit('start-download', [nxm], { game: gameId, name: gameSupport.name }, undefined,
-            (err: Error, id: string) => {
-                if (err) return reject(err);
-                api.events.emit('start-install-download', id, undefined, 
-                (err: Error, modId: string) => {
-                    if (err) return reject(err);
-                    const profileId = selectors.lastActiveProfileForGame(api.getState(), gameId);
-                    api.store?.dispatch(actions.setModEnabled(profileId, modId, true));
-                    return resolve(modId);
-                }
-                );
-            }, 'replace'
-            );
-        });
-    }
-
+    const nxm = `nxm://${nexusModsGameId}/mods/${nexusModsModId}/files/${fileId}`;
+    const dlId = await util.toPromise<string>(cb =>
+      api.events.emit('start-download', [nxm], modInfo, undefined, cb, undefined, { allowInstall: false }));
+    const modId = await util.toPromise<string>(cb =>
+      api.events.emit('start-install-download', dlId, { allowAutoEnable: false }, cb));
+    const profileId = selectors.lastActiveProfileForGame(api.getState(), gameId);
+    await actions.setModsEnabled(api, profileId, [modId], true, {
+      allowAutoDeploy: false,
+      installed: true,
+    });
 }
